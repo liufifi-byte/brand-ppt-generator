@@ -171,3 +171,58 @@ def test_render_news_overflow_protection():
                       [long_para, "第二段" + "字" * 200], [], "", 2, 8)
     assert check_xml(svg)[0]
     assert "2 / 8" in svg
+
+
+# ── 文档接入: pdf/docx 文本提取 ──
+def _make_synthetic_pdf(path):
+    import fitz
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 90), "Synthetic Market Report", fontsize=16, fontname="helv")
+    page.insert_text((72, 130), "The price reached 8.65 units in October.", fontsize=11, fontname="helv")
+    doc.save(str(path)); doc.close()
+
+
+def _make_synthetic_docx(path):
+    from docx import Document
+    d = Document()
+    d.add_paragraph("Synthetic Market Report")
+    d.add_paragraph("The price reached 8.65 units in October.")
+    d.save(str(path))
+
+
+def test_extract_text_pdf_and_docx(tmp_path):
+    from mdpptx.ingest import extract_text
+    pdf = tmp_path / "a.pdf"; _make_synthetic_pdf(pdf)
+    docx = tmp_path / "a.docx"; _make_synthetic_docx(docx)
+    t1 = extract_text(pdf)
+    assert "8.65" in t1 and "Synthetic" in t1
+    t2 = extract_text(docx)
+    assert "8.65" in t2 and "Synthetic" in t2
+
+
+def test_structured_ok_rejects_plain_text():
+    from mdpptx.ingest import _structured_ok
+    assert not _structured_ok("只是普通文本没有结构")
+    assert _structured_ok("__标题__\n\n__模块__\n\n正文段落足够长可以判断。")
+
+
+# ── PPT 模版主题色提取 ──
+def test_extract_theme_override_from_pptx(tmp_path):
+    from mdpptx.template_pptx import extract_theme_override
+    from pptx import Presentation
+    p = tmp_path / "t.pptx"
+    Presentation().save(str(p))       # 默认模板自带 clrScheme
+    ov = extract_theme_override(p)
+    assert "colors" in ov and "primary" in ov["colors"]
+    assert ov["colors"]["primary"].startswith("#") and len(ov["colors"]["primary"]) == 7
+
+
+def test_theme_override_apply_restore_cycle():
+    from mdpptx import theme
+    from mdpptx.template_mode import C
+    snap = theme.snapshot()
+    theme.apply_override({"colors": {"primary": "#ABCDEF"}, "name": "测试"})
+    assert theme.THEME["colors"]["primary"] == "#ABCDEF" and C["primary"] == "#ABCDEF"
+    theme.restore(snap)
+    assert C["primary"] == "#004A86" and theme.THEME["name"] != "测试"

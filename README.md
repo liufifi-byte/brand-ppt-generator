@@ -31,7 +31,7 @@ cp .env.example .env        # 填 GLM_API_KEY
 python -m mdpptx serve      # 打开 http://127.0.0.1:8020
 ```
 
-网页上拖入周报 Markdown → 选模式 → 点「生成 PPT」→ 实时看检查日志 → 下载 .pptx。
+网页上拖入文档（md / txt / **pdf / docx**，任意内容均可——非 Markdown 文档会先提取文本并自动结构化）→ 选模版（默认模版，或上传自己的 .pptx 提取主题色）→ 点「生成 PPT」→ 实时看检查日志 → 下载 .pptx。
 
 ### 方式二：命令行
 
@@ -50,9 +50,13 @@ python -m mdpptx generate --full --out demo2.pptx
 > 模型支持任何 OpenAI 兼容端点（`GLM_BASE_URL` 指向私有化部署即可）。推荐 `glm-5.3-flash`：
 > 单页 SVG 生成 15s~5min，"始终思考"档在大 prompt 上单页可能到 280s+，管线默认 360s 调用超时。
 
-## 输入格式
+## 输入
 
-`work/input.md`（见 `sample/input.md`）：
+**网页**：md / txt / pdf / docx。PDF 与 Word 会先提取文本，再经一次 LLM 结构化调用转成管线格式（正文逐字保留纪律；超长文档默认截断前 1.4 万字符，见 `mdpptx/ingest.py`）。扫描件（纯图片 PDF）暂不支持。
+
+**PPT 模版**：上传 .pptx 后自动提取主题色（accent1-4/dk2 → 生成色板），装饰版式仍用内置母版。v1 仅取色，模版图片/版式克隆在路线图上。
+
+**命令行**输入仍是结构化 Markdown（`work/input.md`，格式如下）：
 
 ```markdown
 __第N期某某周报（10/06-10/10）__      ← 文档标题 (含起止日期, 封面副题用)
@@ -81,6 +85,8 @@ __行业动态__                           ← 有条目模块 → 每条新闻�
 ```
 mdpptx/
 ├── server.py        Web 服务 (FastAPI): 上传任务/进度轮询/pptx 下载, 同时只跑一个任务
+├── ingest.py        文档接入: pdf/docx 文本提取 + LLM 结构化 → input.md
+├── template_pptx.py PPT 模版主题色提取 (.pptx clrScheme → 色板覆盖)
 ├── cli.py           统一入口 (serve / init / generate / template)
 ├── runner.py        SVG 生成模式编排 (CLI 与 Web 共用, on_event 进度回调)
 ├── md_parser.py     Markdown 周报解析 → 模块/条目/段落

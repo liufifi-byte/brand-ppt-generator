@@ -79,3 +79,30 @@ THEME: dict = {
 
 def get_theme() -> dict:
     return THEME
+
+
+# ── 任务级覆盖 (Web 上传 PPT 模板 → 提取主题色覆盖默认色板) ──
+# 任务串行执行, 覆盖→生成→恢复; 各模块持有 THEME 同一引用, 原地改写即可生效
+
+def apply_override(ov: dict) -> None:
+    """原地合并覆盖 (ov: {"colors": {...}, "name": ...})。"""
+    THEME["name"] = ov.get("name", THEME["name"])
+    for k, v in (ov.get("colors") or {}).items():
+        if k in THEME["colors"]:
+            THEME["colors"][k] = v
+
+
+def snapshot() -> dict:
+    """深拷贝当前 THEME (恢复用)。"""
+    import copy
+    return copy.deepcopy(THEME)
+
+
+def restore(snap: dict) -> None:
+    """恢复到 snapshot 状态 (嵌套 dict 原地写回, 保持各模块引用有效)。"""
+    for k, v in snap.items():
+        if isinstance(v, dict) and isinstance(THEME.get(k), dict):
+            THEME[k].clear()
+            THEME[k].update(v)
+        else:
+            THEME[k] = v

@@ -62,6 +62,7 @@ def _on_event(job_id: str):
 
 
 def _run_job(job_id: str) -> None:
+    from . import theme
     job = _jobs[job_id]
     work = Path(job["work_dir"])
     out = work / f"{job_id}.pptx"
@@ -69,14 +70,26 @@ def _run_job(job_id: str) -> None:
     with _run_lock:
         _update(job_id, status="running", phase="queued",
                 msg="排队中 (同时只跑一个任务)" if job.get("queued_behind") else "启动中")
+        theme_snap = theme.snapshot()
         try:
-            if job["mode"] == "template":
-                from .template_mode import run_template
-                run_template(work, out, None, _llm_factory, on_event=_on_event(job_id))
-            else:
-                from .runner import run_generate
-                run_generate(work, out, None, 2, _llm_factory,
-                             on_event=_on_event(job_id))
+            # 1. 文档接入: 任意格式 → input.md (md 直传; pdf/docx 提取+LLM 结构化)
+            from .ingest import prepare_input
+            prepare_input(work, work / "upload" / job["file_name"],
+                          _llm_factory(None), on_event=_on_event(job_id))
+            # 2. 上传模板 → 主题色覆盖 (v1: 仅色板)
+            tpl = work / "template.pptx"
+            if tpl.exists():
+                from .template_pptx import extract_theme_override
+                ov = extract_theme_override(tpl)
+                if ov:
+                    theme.apply_override(ov)
+                    _update(job_id, log_line="[template] 模板主题色已应用: "
+                            + " ".join(ov["colors"].values()))
+                else:
+                    _update(job_id, log_line="[template] 模板未解析到主题色, 用默认色板")
+            # 3. 生成 (模板快速模式)
+            from .template_mode import run_template
+            run_template(work, out, None, _llm_factory, on_event=_on_event(job_id))
             if not out.exists():
                 raise RuntimeError("PPTX 未生成 (见日志)")
             _update(job_id, status="done", phase="done",
@@ -85,40 +98,58 @@ def _run_job(job_id: str) -> None:
             _update(job_id, status="failed", phase="failed",
                     error=str(e)[:500], msg=f"失败: {str(e)[:200]}",
                     log_line=f"[failed] {str(e)[:300]}")
+        finally:
+            theme.restore(theme_snap)
+
+
+ALLOWED_DOC_EXTS = (".md", ".markdown", ".txt", ".pdf", ".docx")
 
 
 @router.post("/api/jobs")
 async def create_job(file: UploadFile = File(...),
-                     mode: str = Form("template")):
-    if mode not in ("template", "generate"):
-        raise HTTPException(400, "mode 仅支持 template / generate")
+                     template: UploadFile = File(None)):
     name = file.filename or ""
-    if not name.lower().endswith((".md", ".markdown", ".txt")):
-        raise HTTPException(400, "仅支持 .md / .markdown / .txt 格式 (格式见 README)")
+    if not name.lower().endswith(ALLOWED_DOC_EXTS):
+        raise HTTPException(400, "支持的文档格式: md / txt / pdf / docx")
     content = await file.read()
     if not content.strip():
         raise HTTPException(400, "文件为空")
+    tpl_name = ""
+    tpl_bytes = b""
+    if template and template.filename:
+        if not template.filename.lower().endswith(".pptx"):
+            raise HTTPException(400, "模板仅支持 .pptx 格式")
+        tpl_name = template.filename
+        tpl_bytes = await template.read()
 
     job_id = uuid.uuid4().hex[:10]
     work = JOBS_DIR / job_id
     (work / "svg").mkdir(parents=True, exist_ok=True)
+    (work / "upload").mkdir(exist_ok=True)
+    # 原始上传件存 upload/ (ingest 按扩展名处理)
+    (work / "upload" / name).write_bytes(content)
+    if tpl_bytes:
+        (work / "template.pptx").write_bytes(tpl_bytes)
     # 品牌资产: 每个任务独立拷贝一份 (换品牌=替换 sample/assets)
     shutil.copytree(SAMPLE / "assets", work / "assets", dirs_exist_ok=True)
-    (work / "input.md").write_bytes(content)
 
     with _lock:
         queued_behind = any(j["status"] in ("queued", "running") for j in _jobs.values())
         _jobs[job_id] = {
-            "id": job_id, "mode": mode, "file_name": name,
+            "id": job_id, "mode": "template",
+            "template_name": tpl_name, "file_name": name,
             "created": datetime.now().isoformat(timespec="seconds"),
             "status": "queued", "phase": "queued", "msg": "已排队",
             "pages_done": 0, "pages_total": 0,
-            "log": [f"[upload] {name} · 模式: {mode}"],
+            "log": [f"[upload] {name}"],
             "work_dir": str(work), "pptx_ready": False, "error": "",
             "queued_behind": queued_behind,
         }
+    _jobs[job_id]["log"].append(
+        f"[upload] 模板: {tpl_name}" if tpl_name else "[upload] 使用默认模板")
     threading.Thread(target=_run_job, args=(job_id,), daemon=True).start()
-    return {"id": job_id, "status": "queued", "mode": mode}
+    return {"id": job_id, "status": "queued", "mode": "template",
+            "template": tpl_name}
 
 
 @router.get("/api/jobs")

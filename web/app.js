@@ -1,59 +1,78 @@
-/* Brand PPT Generator 前端逻辑: 上传 → 轮询进度 → 下载。无框架, 无构建步骤。 */
+/* Brand PPT Generator 前端逻辑 (v3): 上传文档+可选模版 → 轮询进度 → 下载。 */
 (function () {
   const $ = (id) => document.getElementById(id);
-  let file = null;
-  let mode = "template";
+  let file = null;          // 上传的文档
+  let tplFile = null;       // 上传的 pptx 模版 (可空)
+  let tplSource = "default"; // default | upload
   let pollTimer = null;
   let currentJob = null;
   let logSeen = 0;
 
-  // ── 文件选择 (点击 + 拖拽 + 键盘) ──
+  // ── 文档上传框 (点击/拖拽/键盘) ──
   const drop = $("drop"), fileInput = $("file");
-  drop.setAttribute("role", "button");
-  drop.setAttribute("tabindex", "0");
   drop.addEventListener("click", () => fileInput.click());
   drop.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
   });
-  fileInput.addEventListener("change", () => setFile(fileInput.files[0]));
   drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
   drop.addEventListener("dragleave", () => drop.classList.remove("over"));
   drop.addEventListener("drop", (e) => {
     e.preventDefault(); drop.classList.remove("over");
     if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
   });
+  fileInput.addEventListener("change", () => setFile(fileInput.files[0]));
   function setFile(f) {
     if (!f) return;
-    if (!/\.(md|markdown|txt)$/i.test(f.name)) { alert("仅支持 .md / .markdown / .txt"); return; }
+    if (!/\.(md|markdown|txt|pdf|docx)$/i.test(f.name)) {
+      alert("支持的文档格式: md / txt / pdf / docx"); return;
+    }
     file = f;
     $("fname").textContent = f.name;
-    $("go").disabled = false;
+    $("fhint").textContent = "支持 pdf、word · 点击重新选择";
   }
 
-  // ── 模式选择 (radio 语义: 点击/方向键切换) ──
-  const modeCards = Array.from(document.querySelectorAll(".mode"));
-  function selectMode(el) {
-    modeCards.forEach((m) => {
-      m.classList.toggle("sel", m === el);
-      m.setAttribute("aria-checked", m === el ? "true" : "false");
+  // ── 模版来源选择 (radio 语义) ──
+  const opts = [$("tpl-default"), $("tpl-upload")];
+  function selectOpt(el) {
+    tplSource = el.id === "tpl-upload" ? "upload" : "default";
+    opts.forEach((o) => {
+      o.classList.toggle("sel", o === el);
+      o.setAttribute("aria-checked", o === el ? "true" : "false");
     });
-    mode = el.dataset.mode;
+    // 上传模版组的生成按钮: 选了模版文件才出现
+    $("go2").style.display = (tplSource === "upload" && tplFile) ? "" : "none";
   }
-  modeCards.forEach((el) => el.addEventListener("click", () => selectMode(el)));
-  document.querySelector(".modes").addEventListener("keydown", (e) => {
-    const i = modeCards.findIndex((m) => m.classList.contains("sel"));
-    if (e.key === "ArrowRight" && i < modeCards.length - 1) selectMode(modeCards[i + 1]);
-    if (e.key === "ArrowLeft" && i > 0) selectMode(modeCards[i - 1]);
+  opts.forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest("button.act")) return; // 组内按钮不触发改选
+      selectOpt(el);
+    });
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectOpt(el); }
+    });
+  });
+  $("addtpl").addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("tplfile").click();
+  });
+  $("tplfile").addEventListener("change", () => {
+    const f = $("tplfile").files[0];
+    if (!f) return;
+    if (!/\.pptx$/i.test(f.name)) { alert("模版仅支持 .pptx 格式"); return; }
+    tplFile = f;
+    selectOpt($("tpl-upload"));
+    $("tpl-note").innerHTML = '已选模版: <span class="tname"></span>';
+    $("tpl-note").querySelector(".tname").textContent = f.name;
   });
 
-  // ── 提交任务 ──
-  $("go").addEventListener("click", async () => {
-    if (!file) return;
-    $("go").disabled = true;
-    $("go").textContent = "上传中…";
+  // ── 提交 ──
+  async function submit(btn) {
+    if (!file) { alert("请先上传文档"); return; }
+    if (tplSource === "upload" && !tplFile) { alert("请先添加 PPT 模版 (或选默认模版)"); return; }
+    btn.disabled = true; btn.textContent = "提交中…";
     const form = new FormData();
     form.append("file", file);
-    form.append("mode", mode);
+    if (tplSource === "upload" && tplFile) form.append("template", tplFile);
     try {
       const r = await fetch("/api/jobs", { method: "POST", body: form });
       if (!r.ok) {
@@ -72,10 +91,11 @@
     } catch (e) {
       alert("提交失败: " + e.message);
     } finally {
-      $("go").disabled = false;
-      $("go").textContent = "生成 PPT";
+      btn.disabled = false; btn.textContent = "生成 PPT";
     }
-  });
+  }
+  $("go").addEventListener("click", () => submit($("go")));
+  $("go2").addEventListener("click", () => submit($("go2")));
 
   // ── 进度轮询 ──
   function startPoll() {
@@ -103,7 +123,6 @@
     $("stpages").textContent = job.pages_total > 0
       ? job.pages_done + " / " + job.pages_total + " 页" : "";
 
-    // 日志增量追加 (✓/✗ 着色)
     const logEl = $("log");
     if (job.log && job.log.length > logSeen) {
       const frag = document.createDocumentFragment();
@@ -123,13 +142,14 @@
       if (done) {
         $("dlrow").style.display = "flex";
         $("dllink").href = "/api/jobs/" + job.id + "/download";
-        $("dlnote").textContent = job.file_name + " · " + job.mode + " 模式";
+        $("dlnote").textContent = job.file_name +
+          (job.template_name ? " · 模版: " + job.template_name : "");
       }
       refreshJobs();
     }
   }
 
-  // ── 历史任务 ──
+  // ── 历史任务 (左侧栏) ──
   async function refreshJobs() {
     try {
       const r = await fetch("/api/jobs");
@@ -137,28 +157,32 @@
       const ul = $("jobs");
       ul.textContent = "";
       if (!jobs.length) {
-        ul.innerHTML = '<li style="cursor:default;color:var(--dark)">暂无</li>';
+        ul.innerHTML = '<li class="empty" style="cursor:default">暂无</li>';
         return;
       }
       const stZh = { queued: "排队", running: "生成中", done: "完成", failed: "失败" };
-      for (const j of jobs.slice(0, 12)) {
+      for (const j of jobs.slice(0, 15)) {
         const li = document.createElement("li");
+        li.setAttribute("role", "button");
+        li.setAttribute("tabindex", "0");
+        const row = document.createElement("div");
+        row.className = "row1";
         const st = document.createElement("span");
         st.className = "st " + j.status; st.textContent = stZh[j.status] || j.status;
         const nm = document.createElement("span");
-        nm.className = "jname"; nm.textContent = j.file_name + "（" + j.mode + "）";
+        nm.className = "jname"; nm.textContent = j.file_name;
+        row.append(st, nm);
         const tm = document.createElement("span");
-        tm.className = "jtime"; tm.textContent = j.created.replace("T", " ");
-        li.setAttribute("role", "button");
-        li.setAttribute("tabindex", "0");
-        li.append(st, nm, tm);
+        tm.className = "jtime";
+        tm.textContent = j.created.replace("T", " ") +
+          (j.template_name ? " · 有模版" : "");
+        li.append(row, tm);
         li.addEventListener("click", () => {
           currentJob = j.id; logSeen = 0;
           $("progcard").style.display = "block";
           $("log").textContent = ""; $("dlrow").style.display = "none";
           startPoll();
           setProgress(j);
-          window.scrollTo({ top: 0, behavior: "smooth" });
         });
         ul.appendChild(li);
       }
