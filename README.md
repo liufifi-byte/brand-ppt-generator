@@ -23,27 +23,17 @@
 
 ## 快速开始
 
-### 1. 安装
+### 方式一：Web 界面（推荐）
 
 ```bash
-git clone https://github.com/liufifi-byte/brand-ppt-generator.git
-cd brand-ppt-generator
 pip install -r requirements.txt
+cp .env.example .env        # 填 GLM_API_KEY
+python -m mdpptx serve      # 打开 http://127.0.0.1:8020
 ```
 
-> macOS 上 cairosvg 需要 cairo 库：`brew install cairo`，且运行前设置
-> `export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib`（Intel 机器路径为 `/usr/local/lib`）。
+网页上拖入周报 Markdown → 选模式 → 点「生成 PPT」→ 实时看检查日志 → 下载 .pptx。
 
-### 2. 配置模型
-
-```bash
-cp .env.example .env
-# 编辑 .env: 填 GLM_API_KEY (智谱云 key, 格式 id.secret)
-```
-
-支持任何 OpenAI 兼容端点（`GLM_BASE_URL` 指向私有化部署即可）。推荐 `glm-5.3-flash`：单页 SVG 生成 15s~5min，"始终思考"档在大 prompt 上单页可能到 280s+，管线默认 360s 调用超时。
-
-### 3. 跑示例
+### 方式二：命令行
 
 ```bash
 python -m mdpptx init                     # work/ ← sample/ (示例周报+占位品牌图)
@@ -53,6 +43,12 @@ python -m mdpptx generate --full --out demo2.pptx
 ```
 
 产物：`work/svg/page_NN.svg`（每页矢量稿）、`work/png/`（检查渲染预览）、`demo.pptx`。
+
+> macOS 上 cairosvg 需要 cairo 库：`brew install cairo`，且运行前设置
+> `export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib`（Intel 机器路径为 `/usr/local/lib`）。
+>
+> 模型支持任何 OpenAI 兼容端点（`GLM_BASE_URL` 指向私有化部署即可）。推荐 `glm-5.3-flash`：
+> 单页 SVG 生成 15s~5min，"始终思考"档在大 prompt 上单页可能到 280s+，管线默认 360s 调用超时。
 
 ## 输入格式
 
@@ -84,7 +80,9 @@ __行业动态__                           ← 有条目模块 → 每条新闻�
 
 ```
 mdpptx/
-├── cli.py           统一入口 (init / generate / template)
+├── server.py        Web 服务 (FastAPI): 上传任务/进度轮询/pptx 下载, 同时只跑一个任务
+├── cli.py           统一入口 (serve / init / generate / template)
+├── runner.py        SVG 生成模式编排 (CLI 与 Web 共用, on_event 进度回调)
 ├── md_parser.py     Markdown 周报解析 → 模块/条目/段落
 ├── planner.py       确定性页面规划 (不调模型: 封面/数据/新闻/结尾)
 ├── prompts.py       坐标级版式规范 system prompt + 各页型 user prompt
@@ -93,6 +91,7 @@ mdpptx/
 ├── template_mode.py 模板快速模式 (程序化渲染 + 1 次批量 KPI 调用)
 ├── llm.py           智谱云/OpenAI 兼容客户端 (JWT/退避/重试)
 └── exporter.py      SVG → PPTX 导出
+web/                 前端单页 (无构建步骤: 原生 HTML/JS)
 converter/           vendored svg_to_pptx 转换器 (矢量 SVG → 原生 PPTX 形状)
 sample/              示例周报 + 占位品牌图
 tests/               单元测试 (不调 LLM)

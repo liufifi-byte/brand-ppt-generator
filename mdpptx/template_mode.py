@@ -204,17 +204,25 @@ def batch_kpi(llm, news_pages: list[dict]) -> list[dict]:
 
 
 def run_template(work: Path, out: Path | None, model: str | None,
-                 llm_factory) -> list[bool]:
+                 llm_factory, on_event=None) -> list[bool]:
     """模板模式主流程: 渲染全部页 → 全页检查 → (可选)导出 pptx。
 
+    on_event(phase, msg, **kw): 进度回调 (Web 任务态/CLI 打印共用);
+        kw 可含 pages_total / pages_done。
     Returns: 每页检查结果列表 (True=通过)。
     """
+    def _ev(phase: str, msg: str, **kw):
+        if on_event is not None:
+            on_event(phase, msg, **kw)
+
     svg_dir = work / "svg"
     svg_dir.mkdir(exist_ok=True)
 
     doc = parse_md((work / "input.md").read_text(encoding="utf-8"))
     pages = plan_pages(doc)
     total = len(pages)
+    _ev("plan", f"页面计划 {total} 页: {[p['type'] for p in pages]}",
+        pages_total=total)
     print(f"模板模式: {total} 页, 模型环节仅 1 次批量 KPI 调用")
     news_pages = [p for p in pages if p["type"] == "news"]
 
@@ -223,12 +231,15 @@ def run_template(work: Path, out: Path | None, model: str | None,
     llm = None
     if kpi_cache.exists():
         kpis = json.loads(kpi_cache.read_text(encoding="utf-8"))
+        _ev("kpi", "KPI 抽取: 使用缓存")
         print(f"[kpi] 使用缓存 {kpi_cache}")
     else:
         llm = llm_factory(model)
+        _ev("kpi", "KPI 批量抽取中 (唯一模型环节, 约 30-60s)…")
         kpis = batch_kpi(llm, news_pages)
         kpi_cache.write_text(json.dumps(kpis, ensure_ascii=False, indent=1),
                              encoding="utf-8")
+        _ev("kpi", f"KPI 批量调用完成 ({time.time()-t0:.0f}s)")
         print(f"[kpi] 批量调用 {time.time()-t0:.0f}s: "
               f"{[(k['kpis'] and len(k['kpis'])) or 0 for k in kpis]}")
 
@@ -253,6 +264,7 @@ def run_template(work: Path, out: Path | None, model: str | None,
         elif not dst.exists():   # 数据页等无母版页型 → 模型单页补 (仅首次)
             if llm is None:
                 llm = llm_factory(model)
+            _ev("gen", f"P{i:02d}({pg['type']}) 无母版, 模型单页生成中 (约 3-5 分钟)…")
             print(f"[reuse-miss] P{i:02d}({pg['type']}) 无母版, 走模型生成…", flush=True)
             svg, iss = gen_page(llm, pg, i, total, doc, work)
             if svg:
@@ -271,6 +283,7 @@ def run_template(work: Path, out: Path | None, model: str | None,
         f = svg_dir / f"page_{i:02d}.svg"
         if not f.exists():
             print(f"  [P{i:02d}] 缺页!")
+            _ev("page", f"P{i:02d} 缺页 ✗", pages_done=i)
             ok_list.append(False)
             continue
         svg = f.read_text(encoding="utf-8")
@@ -285,10 +298,14 @@ def run_template(work: Path, out: Path | None, model: str | None,
                                            png_dir=work / "png", page_tag=f"p{i:02d}",
                                            min_ratio=0.003 if pg["type"] == "end" else 0.02)
         ok_list.append(ok)
-        print(f"  [P{i:02d}] {'✓' if ok else '✗ ' + '; '.join(issues)[:120]}")
+        line = f"[P{i:02d}] {'✓' if ok else '✗ ' + '; '.join(issues)[:120]}"
+        print("  " + line)
+        _ev("page", line, pages_done=i)
     print(f"检查通过 {sum(ok_list)}/{total}")
+    _ev("check", f"检查通过 {sum(ok_list)}/{total}")
 
     if out is not None:
         from .exporter import export_pptx
+        _ev("export", "导出 PPTX 中…")
         export_pptx(work, out)
     return ok_list

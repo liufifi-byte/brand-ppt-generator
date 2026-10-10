@@ -1,6 +1,7 @@
 """统一 CLI。
 
 用法:
+    python -m mdpptx serve --port 8020        # 起 Web 服务 (上传文档 → 生成 PPT)
     python -m mdpptx init                     # 初始化 work/ (从 sample 拷贝示例)
     python -m mdpptx generate --pages 3       # SVG 生成模式 (试点前 3 页)
     python -m mdpptx generate --full --out 周报.pptx
@@ -9,14 +10,9 @@
 from __future__ import annotations
 import argparse
 import shutil
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from .llm import LLMClient
-from .md_parser import parse_md
-from .planner import plan_pages
-from .render import gen_page
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SAMPLE = REPO_ROOT / "sample"
@@ -42,43 +38,15 @@ def cmd_init(args) -> None:
 
 
 def cmd_generate(args) -> None:
+    from .runner import run_generate
     work = Path(args.work)
-    md = (work / "input.md").read_text(encoding="utf-8")
-    doc = parse_md(md)
-    pages = plan_pages(doc)
-    total = len(pages)
-    if args.pages:
-        pages, total = pages[:args.pages], args.pages
-    print(f"页面计划 {len(pages)} 页: {[p['type'] for p in pages]}")
-    print(f"文档: {doc['doc_title']} | 模块: {[m['name'] for m in doc['modules']]}")
-
-    llm = _llm_factory(args.model)
-    print(f"模型: {llm.model}")
-    (work / "svg").mkdir(exist_ok=True)
-
-    failures = []
-    t0 = time.time()
-    # 页间并行: 版式由规范锁死, 页间无依赖; 失败页不阻塞其他页
-    def _task(i_pg):
-        i, pg = i_pg
-        svg, issues = gen_page(llm, pg, i, total, doc, work)
-        if svg:
-            (work / "svg" / f"page_{i:02d}.svg").write_text(svg, encoding="utf-8")
-        return i, bool(svg), not issues
-    done_log = []
-    with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
-        futs = {pool.submit(_task, x): x[0] for x in enumerate(pages, 1)}
-        for fut in as_completed(futs):
-            i, has_svg, clean = fut.result()
-            done_log.append(i)
-            print(f"  [done] P{i:02d} ({len(done_log)}/{len(pages)}) "
-                  f"累计 {time.time()-t0:.0f}s", flush=True)
-    print(f"生成完毕 {time.time()-t0:.0f}s, 完成 {len(done_log)}/{len(pages)} 页")
-
-    if args.out or args.full:
-        out = Path(args.out) if args.out else REPO_ROOT / f"{doc['doc_title'][:20]}_SVG模式.pptx"
-        from .exporter import export_pptx
-        export_pptx(work, out)
+    out = (Path(args.out) if args.out else None) if (args.out or args.full) else None
+    if args.full and not args.out:
+        from .md_parser import parse_md
+        title = parse_md((work / "input.md").read_text(encoding="utf-8"))["doc_title"]
+        out = REPO_ROOT / f"{title[:20]}_SVG模式.pptx"
+    run_generate(work, out, args.model, args.concurrency, _llm_factory,
+                 pages_limit=args.pages)
 
 
 def cmd_template(args) -> None:
@@ -88,10 +56,22 @@ def cmd_template(args) -> None:
     run_template(work, out, args.model, _llm_factory)
 
 
+def cmd_serve(args) -> None:
+    import uvicorn
+    from .server import app
+    print(f"Web 服务: http://127.0.0.1:{args.port}")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="mdpptx",
                                  description="Markdown 周报 → 品牌 PPT 生成器")
     sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p_serve = sub.add_parser("serve", help="起 Web 服务 (上传文档 → 生成 PPT)")
+    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve.add_argument("--port", type=int, default=8020)
+    p_serve.set_defaults(func=cmd_serve)
 
     p_init = sub.add_parser("init", help="初始化 work 目录")
     p_init.add_argument("--work", default=str(WORK_DEFAULT))
