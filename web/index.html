@@ -3,182 +3,366 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Brand PPT Generator</title>
+<title>Brand PPT</title>
 <style>
   :root {
-    --primary: #004A86; --accent: #00AAE8; --dark: #4C4948;
-    --body: #1A1A1A; --bg: #F5F8FC; --card-bg: #E8F1F8; --line: #D8E2EC;
+    --bg: #F7F8FA; --surface: #FFFFFF;
+    --text: #1F2329; --text-2: #646A73; --line: #E5E7EB;
+    --brand: #1664FF; --brand-weak: #EDF3FF;
+    --ok: #2EA463; --ok-bg: #E8F6EE;
+    --err: #D94242; --err-bg: #FDEEEE;
+    --radius: 8px;
   }
-  * { box-sizing: border-box; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
   body {
-    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: var(--bg); color: var(--body); min-height: 100vh;
-    display: flex; flex-direction: column; align-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+                 "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px;
+    -webkit-font-smoothing: antialiased;
   }
-  header {
-    width: 100%; background: #fff; border-bottom: 1px solid var(--line);
-    padding: 14px 0; position: sticky; top: 0; z-index: 10;
-  }
-  header .inner {
-    max-width: 1080px; margin: 0 auto; padding: 0 20px;
-    display: flex; align-items: center;
-  }
-  header h1 { font-size: 17px; color: var(--primary); font-weight: 600; }
-  main {
-    width: 100%; max-width: 1080px; padding: 24px 20px 60px;
-    display: grid; grid-template-columns: 220px 1fr; gap: 24px;
-    align-items: start;
-  }
-  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+  .ic { width: 1em; height: 1em; stroke: currentColor; stroke-width: 2;
+        stroke-linecap: round; stroke-linejoin: round; fill: none;
+        vertical-align: -0.125em; }
 
-  /* 左侧栏 · 历史任务 (无卡片框) */
-  #sidebar { position: sticky; top: 76px; }
-  #sidebar .cap {
-    font-size: 11px; letter-spacing: 2px; color: var(--dark);
-    text-transform: uppercase; padding: 0 4px 8px;
-    border-bottom: 1px solid var(--line); margin-bottom: 4px;
+  /* ── 顶部导航 ── */
+  nav {
+    height: 60px; background: var(--surface); border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; padding: 0 24px; gap: 8px;
+    position: sticky; top: 0; z-index: 20;
   }
+  nav .brand { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; }
+  nav .brand .ic { font-size: 18px; color: var(--brand); }
+  nav .side-toggle {
+    display: none; margin-left: auto; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-2); padding: 6px 10px; border-radius: 6px;
+  }
+  nav .side-toggle:hover { background: var(--bg); color: var(--text); }
+
+  /* ── 布局: 侧栏 + 主区 ── */
+  .layout { display: flex; min-height: calc(100vh - 60px); }
+  aside {
+    width: 240px; flex: none; border-right: 1px solid var(--line);
+    padding: 20px 12px; position: sticky; top: 60px;
+    height: calc(100vh - 60px); overflow-y: auto;
+  }
+  aside .cap { font-size: 13px; font-weight: 600; color: var(--text-2);
+               padding: 0 8px 8px; }
   ul.jobs { list-style: none; }
   ul.jobs li {
-    padding: 9px 6px; font-size: 12.5px; border-radius: 6px;
-    display: flex; flex-direction: column; gap: 3px; cursor: pointer;
+    padding: 10px 8px; border-radius: 6px; cursor: pointer; margin-bottom: 2px;
   }
-  ul.jobs li:hover { background: var(--card-bg); }
-  ul.jobs li:focus-visible { outline: 2px solid var(--accent); }
-  ul.jobs li .row1 { display: flex; align-items: center; gap: 6px; }
-  .st {
-    font-size: 10px; padding: 1px 7px; border-radius: 10px;
-    background: var(--card-bg); color: var(--primary); white-space: nowrap;
+  ul.jobs li:hover { background: #F0F1F3; }
+  ul.jobs li.sel { background: var(--brand-weak); }
+  ul.jobs li .r1 { display: flex; align-items: flex-start; gap: 8px; }
+  ul.jobs li .name {
+    flex: 1; font-size: 13px; line-height: 1.45;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; word-break: break-all;
   }
-  .st.done { background: #e2f6ea; color: #1c7c46; }
-  .st.failed { background: #fdeae6; color: #b3362a; }
-  .st.running, .st.queued { background: #e3f2fd; color: #1258a8; }
-  .jname {
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
-    color: var(--body);
-  }
-  .jtime { color: var(--dark); font-size: 10.5px; padding-left: 2px; }
-  .empty { color: var(--dark); font-size: 12px; padding: 8px 6px; }
+  .chip { flex: none; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+          white-space: nowrap; margin-top: 1px; }
+  .chip.running { color: var(--brand); background: var(--brand-weak); }
+  .chip.done { color: var(--ok); background: var(--ok-bg); }
+  .chip.failed { color: var(--err); background: var(--err-bg); }
+  .chip.queued { color: var(--text-2); background: #F0F1F3; }
+  ul.jobs li .time { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+  .empty-side { font-size: 13px; color: var(--text-2); padding: 8px; }
 
-  /* 主列 */
-  #drop {
-    background: #fff; border: 2px dashed var(--line); border-radius: 12px;
-    padding: 44px 20px; text-align: center; cursor: pointer;
-    transition: all .15s;
-  }
-  #drop:hover, #drop.over { border-color: var(--accent); background: var(--card-bg); }
-  #drop .l1 { font-size: 17px; font-weight: 600; color: var(--primary); }
-  #drop .l2 { font-size: 12.5px; color: var(--dark); margin-top: 8px; }
-  #drop .fname { font-size: 14px; font-weight: 600; color: var(--primary); }
-  input[type="file"] { display: none; }
+  main { flex: 1; background: var(--surface); min-width: 0; }
+  main .inner { max-width: 880px; margin: 0 auto; padding: 32px 32px 64px; }
+  .page-title { font-size: 24px; font-weight: 600; margin-bottom: 32px; }
+  section { margin-bottom: 32px; }
+  section > h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
 
-  /* 模版选项 (无边框, 文字式) */
-  .tpl-row {
-    display: flex; gap: 56px; margin-top: 26px; padding: 0 8px;
-    flex-wrap: wrap;
+  /* ── 内容文档 ── */
+  .upload-zone {
+    height: 164px; border: 1.5px dashed #D0D3D9; border-radius: var(--radius);
+    background: #FAFBFC; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px;
+    cursor: pointer; transition: border-color .12s, background .12s;
   }
-  .tpl-opt { padding: 0 0 14px; cursor: pointer; font: inherit; text-align: left; }
-  .tpl-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-  .tpl-opt .ttl {
-    font-size: 15px; font-weight: 600; color: var(--dark);
-    padding-bottom: 10px; border-bottom: 2px solid transparent;
-    display: inline-block; transition: all .15s;
-  }
-  .tpl-opt.sel .ttl { color: var(--primary); border-bottom-color: var(--accent); }
-  .tpl-opt .sub { font-size: 12px; color: var(--dark); margin-top: 10px; }
-  .tpl-opt .sub .tname { color: var(--primary); font-weight: 600; }
-  button.act {
-    margin-top: 10px; padding: 9px 22px; font-size: 13.5px;
-    background: var(--primary); color: #fff; border: none; border-radius: 7px;
-    cursor: pointer; font-weight: 600;
-  }
-  button.act:hover { background: #0060a5; }
-  button.act.ghost { background: #fff; color: var(--primary);
-                     border: 1px solid var(--primary); }
-  button.act.ghost:hover { background: var(--card-bg); }
+  .upload-zone:hover { border-color: var(--brand); background: #F5F8FF; }
+  .upload-zone .ic { font-size: 28px; color: var(--text-2); }
+  .upload-zone .t1 { font-size: 14px; color: var(--text); }
+  .upload-zone .t2 { font-size: 12.5px; color: var(--text-2); }
+  .upload-zone.has-file { cursor: default; height: auto;
+                          padding: 14px 16px; border-style: solid;
+                          border-color: var(--line); background: var(--surface);
+                          flex-direction: row; justify-content: flex-start; }
+  .upload-zone.err { border-color: var(--err); background: #FDF7F7; cursor: default;
+                     height: auto; padding: 16px; }
+  .file-info { display: flex; align-items: center; gap: 12px; width: 100%; }
+  .file-info .ic { font-size: 22px; color: var(--brand); flex: none; }
+  .file-info .meta { flex: 1; min-width: 0; }
+  .file-info .fname { font-size: 14px; word-break: break-all;
+                      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-info .fsize { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+  .link-btn { font-size: 13px; color: var(--brand); padding: 6px 8px;
+              border-radius: 6px; flex: none; }
+  .link-btn:hover { background: var(--brand-weak); }
+  .icon-btn { color: var(--text-2); padding: 6px; border-radius: 6px; flex: none; }
+  .icon-btn:hover { background: #F0F1F3; color: var(--text); }
+  .upload-zone .err-body { display: flex; flex-direction: column; align-items: center;
+                           gap: 8px; }
+  .upload-zone .err-body .msg { font-size: 13px; color: var(--err); }
 
-  /* 进度 */
-  .card {
-    background: #fff; border: 1px solid var(--line); border-radius: 10px;
-    padding: 20px; margin-top: 20px;
+  /* ── 演示模板 ── */
+  .tpl-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 16px; max-width: 560px; }
+  .tpl-item { cursor: pointer; position: relative; border-radius: var(--radius);
+              padding: 0; text-align: left; }
+  .tpl-preview {
+    aspect-ratio: 16 / 9; border: 1.5px solid var(--line); border-radius: var(--radius);
+    background: var(--surface); overflow: hidden; position: relative;
+    transition: border-color .12s;
   }
-  .status-row { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 10px; }
-  .status-row .spin {
-    width: 14px; height: 14px; border: 2px solid var(--line);
-    border-top-color: var(--accent); border-radius: 50%;
-    animation: r 0.8s linear infinite; display: none;
+  .tpl-item:hover .tpl-preview { border-color: #B9C0CB; }
+  .tpl-item.sel .tpl-preview { border-color: var(--brand); }
+  .tpl-item.sel .tpl-body { background: var(--brand-weak); }
+  .tpl-check {
+    position: absolute; top: 8px; right: 8px; width: 20px; height: 20px;
+    border-radius: 50%; background: var(--brand); color: #fff;
+    display: none; align-items: center; justify-content: center;
   }
-  .status-row.running .spin { display: block; }
-  @keyframes r { to { transform: rotate(360deg); } }
-  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 8px 0 12px; }
-  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s; }
+  .tpl-item.sel .tpl-check { display: flex; }
+  .tpl-check .ic { font-size: 12px; stroke-width: 3; }
+  .tpl-body { padding: 8px; margin: 8px -8px -8px;
+              border-radius: 0 0 var(--radius) var(--radius); }
+  .tpl-name { font-size: 14px; font-weight: 600; }
+  .tpl-desc { font-size: 12.5px; color: var(--text-2); margin-top: 2px; line-height: 1.5; }
+
+  /* 品牌蓝真实风格预览: 封面标题层级 + 内容卡 + 品牌色块 (按默认主题色渲染) */
+  .deck { position: absolute; inset: 0; padding: 7% 8%; display: flex;
+          flex-direction: column; gap: 6%; }
+  .deck .d-title { height: 9%; width: 55%; border-radius: 2px;
+                   background: var(--pv-primary, #004A86); }
+  .deck .d-sub { height: 4.5%; width: 32%; border-radius: 2px; background: #C4CBD4; }
+  .deck .d-line { height: 2.5%; width: 84%; border-radius: 2px;
+                  background: var(--pv-accent, #00AAE8); }
+  .deck .d-cards { flex: 1; display: flex; gap: 4%; }
+  .deck .d-card { flex: 1; border-radius: 3px; background: var(--pv-card, #F5F8FC);
+                  display: flex; align-items: flex-start; padding: 6% 5%; }
+  .deck .d-card::before { content: ""; width: 7%; min-width: 3px; border-radius: 2px;
+                          height: 100%; background: var(--pv-primary, #004A86); }
+  .deck .d-lines { flex: 1; padding-left: 6%; display: flex; flex-direction: column;
+                   gap: 14%; justify-content: center; }
+  .deck .d-lines i { display: block; height: 4px; border-radius: 2px; background: #C4CBD4; }
+  .deck .d-lines i:nth-child(2) { width: 82%; }
+  .deck .d-lines i:nth-child(3) { width: 60%; }
+  .deck .d-page { position: absolute; right: 5%; bottom: 5%; width: 7%; height: 3px;
+                  border-radius: 2px; background: #D5DAE0; }
+
+  /* 自定义模板槽位 */
+  .tpl-empty {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px;
+    border: 1.5px dashed #D0D3D9; border-radius: var(--radius); background: #FAFBFC;
+    margin: -1.5px;
+  }
+  .tpl-empty .ic { font-size: 24px; color: var(--text-2); }
+  .tpl-empty .t { font-size: 13px; color: var(--text-2); }
+  .tpl-empty.loading .t { color: var(--brand); }
+  .tpl-empty .spin { width: 18px; height: 18px; border: 2px solid var(--line);
+    border-top-color: var(--brand); border-radius: 50%;
+    animation: rot .8s linear infinite; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  .tpl-uploaded { position: absolute; inset: 0; }
+  .tpl-uploaded .file-chip {
+    position: absolute; left: 8px; bottom: 8px; right: 8px;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,.92); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 8px; font-size: 12px;
+  }
+  .tpl-uploaded .file-chip .n { flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tpl-uploaded .file-chip .icon-btn { padding: 3px; }
+  .swatches { position: absolute; top: 8px; left: 8px; display: flex; gap: 4px; }
+  .swatches i { width: 12px; height: 12px; border-radius: 3px;
+                border: 1px solid rgba(0,0,0,.08); }
+  .tpl-errmsg { font-size: 12.5px; color: var(--err); margin-top: 8px; }
+
+  /* ── 主操作行 ── */
+  .action-row { display: flex; align-items: center; gap: 12px; margin-top: 8px;
+                padding-top: 20px; border-top: 1px solid var(--line); }
+  .action-row .sel-status { flex: 1; font-size: 13px; color: var(--text-2);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .btn-primary {
+    height: 42px; padding: 0 28px; font-size: 14px; font-weight: 600;
+    background: var(--brand); color: #fff; border-radius: var(--radius);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary:hover:not(:disabled) { background: #0E56E0; }
+  .btn-primary:disabled { background: #C3CCDC; }
+  .btn-primary .spin { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff; border-radius: 50%; animation: rot .8s linear infinite;
+    display: none; }
+  .btn-primary.loading .spin { display: block; }
+
+  /* ── 生成进度 ── */
+  #progress { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line); }
+  #progress .st-row { display: flex; align-items: center; gap: 8px; font-size: 14px;
+                      margin-bottom: 12px; }
+  #progress .st-row .spin { width: 14px; height: 14px; border: 2px solid var(--line);
+    border-top-color: var(--brand); border-radius: 50%;
+    animation: rot .8s linear infinite; display: none; }
+  #progress .st-row.running .spin { display: block; }
+  #progress .pct { margin-left: auto; font-size: 13px; color: var(--text-2);
+                   font-variant-numeric: tabular-nums; }
+  .bar { height: 4px; background: var(--line); border-radius: 2px;
+         overflow: hidden; margin-bottom: 12px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--brand);
+           transition: width .5s; }
   #log {
-    background: #0f1b26; color: #c9e3f5; font: 12px/1.7 "SF Mono", Menlo, Consolas, monospace;
-    border-radius: 8px; padding: 12px; height: 220px; overflow-y: auto;
+    background: #0F1115; color: #C9D4E4; font: 12px/1.7 "SF Mono", Menlo, Consolas, monospace;
+    border-radius: var(--radius); padding: 12px; height: 200px; overflow-y: auto;
     white-space: pre-wrap; word-break: break-all;
   }
-  #log .ok { color: #7ee2a8; } #log .bad { color: #ffb4a8; }
-  .dl {
-    margin-top: 14px; display: none; align-items: center; gap: 12px;
-    background: var(--card-bg); border: 1px solid var(--line);
-    border-radius: 8px; padding: 14px;
+  #log .ok { color: #7ED8A5; } #log .bad { color: #F2A49B; }
+  .result-row { margin-top: 12px; display: none; align-items: center; gap: 12px; }
+  .result-row.show { display: flex; }
+  .result-row .note { font-size: 12.5px; color: var(--text-2);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .result-row.error { color: var(--err); font-size: 13px; flex: 1;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .btn-outline {
+    height: 36px; padding: 0 16px; font-size: 13px; color: var(--brand);
+    border: 1px solid var(--brand); border-radius: 6px;
+    display: inline-flex; align-items: center; gap: 6px; flex: none;
+    text-decoration: none;
   }
-  .dl a {
-    color: #fff; background: var(--primary); text-decoration: none;
-    padding: 8px 18px; border-radius: 6px; font-size: 14px; font-weight: 600;
+  .btn-outline:hover { background: var(--brand-weak); }
+
+  /* ── 窄屏 ── */
+  @media (max-width: 900px) {
+    nav .side-toggle { display: inline-flex; }
+    .layout { position: relative; }
+    aside {
+      position: fixed; left: 0; top: 60px; bottom: 0; z-index: 30;
+      background: var(--surface); transform: translateX(-100%);
+      transition: transform .2s; height: auto;
+    }
+    aside.open { transform: none; box-shadow: 0 0 0 1px var(--line); }
+    .side-mask { display: none; position: fixed; inset: 60px 0 0 0; z-index: 25;
+                 background: rgba(31,35,41,.3); }
+    .side-mask.show { display: block; }
+    main .inner { padding: 24px 20px 48px; }
+    .tpl-grid { max-width: none; }
   }
-  .dl .note { font-size: 12px; color: var(--dark); }
+  @media (max-width: 560px) {
+    .tpl-grid { grid-template-columns: 1fr; }
+    .action-row { flex-wrap: wrap; }
+    .action-row .btn-primary { width: 100%; justify-content: center; }
+  }
 </style>
 </head>
 <body>
-<header><div class="inner">
-  <h1>Brand PPT Generator</h1>
-</div></header>
 
-<main>
-  <div id="sidebar">
+<nav>
+  <span class="brand">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+    Brand PPT
+  </span>
+  <button class="side-toggle" id="sideToggle" aria-label="打开历史任务">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
+    历史任务
+  </button>
+</nav>
+
+<div class="layout">
+  <aside id="sidebar" aria-label="历史任务">
     <div class="cap">历史任务</div>
-    <ul class="jobs" id="jobs"><li class="empty" style="cursor:default">暂无</li></ul>
-  </div>
+    <ul class="jobs" id="jobs"><li class="empty-side" style="cursor:default">暂无历史任务</li></ul>
+  </aside>
+  <div class="side-mask" id="sideMask"></div>
 
-  <div id="maincol">
-    <div id="drop" role="button" tabindex="0">
-      <div class="l1 fname" id="fname">点击上传文件，自动生成PPT</div>
-      <div class="l2" id="fhint">支持 pdf、word</div>
+  <main>
+    <div class="inner">
+      <h1 class="page-title">新建演示文稿</h1>
+
+      <section aria-label="内容文档">
+        <h2>内容文档</h2>
+        <div class="upload-zone" id="dropzone" role="button" tabindex="0"
+             aria-label="上传内容文档"></div>
+        <input type="file" id="file" accept=".md,.markdown,.txt,.pdf,.docx" hidden />
+        <input type="file" id="tplfile" accept=".pptx" hidden />
+      </section>
+
+      <section aria-label="演示模板">
+        <h2>演示模板</h2>
+        <div class="tpl-grid" role="radiogroup" aria-label="演示模板">
+          <button type="button" class="tpl-item sel" id="tplBrand" role="radio"
+                  aria-checked="true">
+            <div class="tpl-preview">
+              <div class="deck" style="--pv-primary:#004A86; --pv-accent:#00AAE8; --pv-card:#F5F8FC">
+                <div class="d-title"></div><div class="d-sub"></div><div class="d-line"></div>
+                <div class="d-cards">
+                  <div class="d-card"><div class="d-lines"><i></i><i></i><i></i></div></div>
+                  <div class="d-card"><div class="d-lines"><i></i><i></i><i></i></div></div>
+                </div>
+                <div class="d-page"></div>
+              </div>
+              <span class="tpl-check"><svg class="ic" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+            </div>
+            <div class="tpl-body">
+              <div class="tpl-name">品牌蓝</div>
+              <div class="tpl-desc">内置版式：标题层级 + 内容卡片，主题色如图</div>
+            </div>
+          </button>
+
+          <div class="tpl-item" id="tplCustom" role="radio" aria-checked="false" tabindex="0">
+            <div class="tpl-preview" id="customPreview">
+              <div class="tpl-empty" id="customEmpty">
+                <svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                <div class="t" id="customEmptyText">上传模板</div>
+              </div>
+              <span class="tpl-check"><svg class="ic" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+            </div>
+            <div class="tpl-body">
+              <div class="tpl-name" id="customName">上传自定义模板</div>
+              <div class="tpl-desc" id="customDesc">.pptx — 生成时读取模板主题色应用于配色</div>
+            </div>
+          </div>
+        </div>
+        <div class="tpl-errmsg" id="tplErr" style="display:none"></div>
+      </section>
+
+      <div class="action-row">
+        <span class="sel-status" id="selStatus">已选择：品牌蓝</span>
+        <button class="btn-primary" id="go" disabled>
+          <span class="spin"></span><span id="goText">生成 PPT</span>
+        </button>
+      </div>
+
+      <div id="progress" style="display:none" aria-live="polite">
+        <div class="st-row" id="stRow">
+          <span class="spin"></span><b id="stText"></b>
+          <span class="pct" id="stPct"></span>
+        </div>
+        <div class="bar"><i id="barFill"></i></div>
+        <div id="log"></div>
+        <div class="result-row" id="dlRow">
+          <a class="btn-outline" id="dlLink" href="#">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 12 5 5 5-5"/><path d="M5 21h14"/></svg>
+            下载 PPT
+          </a>
+          <span class="note" id="dlNote"></span>
+        </div>
+        <div class="result-row error" id="errRow">
+          <span id="errMsg"></span>
+          <button class="btn-outline" id="retryBtn">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+            重试
+          </button>
+        </div>
+      </div>
     </div>
-    <input type="file" id="file" accept=".md,.markdown,.txt,.pdf,.docx" />
-    <input type="file" id="tplfile" accept=".pptx" />
+  </main>
+</div>
 
-    <div class="tpl-row" role="radiogroup" aria-label="模版来源">
-      <div class="tpl-opt" id="tpl-upload" role="radio" tabindex="0" aria-checked="false">
-        <span class="ttl">上传模版</span>
-        <div class="sub" id="tpl-note">使用自己的 PPT 模版主题色</div>
-        <button type="button" class="act ghost" id="addtpl">添加模版</button>
-        <button type="button" class="act" id="go2" style="display:none">生成 PPT</button>
-      </div>
-      <div class="tpl-opt sel" id="tpl-default" role="radio" tabindex="0" aria-checked="true">
-        <span class="ttl">默认模版</span>
-        <div class="sub">内置品牌蓝主题</div>
-        <button type="button" class="act" id="go">生成 PPT</button>
-      </div>
-    </div>
-
-    <div class="card" id="progcard" style="display:none">
-      <div class="status-row" id="strow">
-        <span class="spin"></span>
-        <b id="sttext">排队中…</b>
-        <span id="stpages" style="margin-left:auto;color:var(--dark);font-size:12px"></span>
-      </div>
-      <div class="bar"><i id="barfill"></i></div>
-      <div id="log"></div>
-      <div class="dl" id="dlrow">
-        <a id="dllink" href="#">下载 PPTX</a>
-        <span class="note" id="dlnote"></span>
-      </div>
-    </div>
-  </div>
-</main>
-
-<script src="/app.js?v=3"></script>
+<script src="/app.js?v=5"></script>
 </body>
 </html>

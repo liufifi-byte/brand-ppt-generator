@@ -152,6 +152,32 @@ async def create_job(file: UploadFile = File(...),
             "template": tpl_name}
 
 
+@router.post("/api/template-preview")
+async def template_preview(template: UploadFile = File(...)):
+    """上传 .pptx 即时解析主题色 (前端预览用, 不建任务)。
+
+    后端 v1 只读取 clrScheme 主题色 — 预览如实反映这一能力边界。
+    """
+    if not (template.filename or "").lower().endswith(".pptx"):
+        raise HTTPException(400, "模板仅支持 .pptx 格式")
+    content = await template.read()
+    if not content:
+        raise HTTPException(400, "文件为空")
+    import tempfile
+    from .template_pptx import extract_theme_override
+    with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as f:
+        f.write(content)
+        tmp = Path(f.name)
+    try:
+        ov = extract_theme_override(tmp)
+    finally:
+        tmp.unlink(missing_ok=True)
+    if not ov:
+        return {"colors": {}, "name": "", "readable": False}
+    return {"colors": ov.get("colors", {}), "name": ov.get("name", ""),
+            "readable": True}
+
+
 @router.get("/api/jobs")
 def list_jobs():
     with _lock:
