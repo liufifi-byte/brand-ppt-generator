@@ -20,31 +20,35 @@
     padding: 14px 0; position: sticky; top: 0; z-index: 10;
   }
   header .inner {
-    max-width: 880px; margin: 0 auto; padding: 0 20px;
-    display: flex; align-items: center; gap: 10px;
+    max-width: 1080px; margin: 0 auto; padding: 0 20px;
+    display: flex; align-items: center;
   }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
   header h1 { font-size: 17px; color: var(--primary); font-weight: 600; }
-  header .sub { font-size: 12px; color: var(--dark); margin-left: auto; }
-  main { width: 100%; max-width: 880px; padding: 24px 20px 60px; }
+  main {
+    width: 100%; max-width: 1080px; padding: 24px 20px 60px;
+    display: grid; grid-template-columns: 1fr 300px; gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
   .card {
     background: #fff; border: 1px solid var(--line); border-radius: 10px;
     padding: 20px; margin-bottom: 16px;
   }
-  .card h2 { font-size: 15px; margin-bottom: 4px; color: var(--primary); }
-  .card .desc { font-size: 13px; color: var(--dark); margin-bottom: 14px; line-height: 1.6; }
+  .card h2 { font-size: 15px; margin-bottom: 14px; color: var(--primary); }
   #drop {
     border: 2px dashed var(--line); border-radius: 8px; padding: 26px;
     text-align: center; cursor: pointer; transition: all .15s;
   }
   #drop:hover, #drop.over { border-color: var(--accent); background: var(--card-bg); }
-  #drop .fname { font-size: 14px; margin-top: 6px; color: var(--primary); font-weight: 600; }
+  #drop .fname { font-size: 14px; color: var(--primary); font-weight: 600; }
   #drop .hint { font-size: 12px; color: var(--dark); margin-top: 4px; }
   .modes { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
   .mode {
-    flex: 1; min-width: 240px; border: 1px solid var(--line); border-radius: 8px;
+    flex: 1; min-width: 220px; border: 1px solid var(--line); border-radius: 8px;
     padding: 10px 12px; cursor: pointer; font-size: 13px;
+    background: #fff; text-align: left; font: inherit;
   }
+  .mode:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .mode b { display: block; font-size: 13px; margin-bottom: 2px; }
   .mode span { color: var(--dark); font-size: 12px; }
   .mode.sel { border-color: var(--primary); background: var(--card-bg); }
@@ -81,11 +85,14 @@
     padding: 8px 18px; border-radius: 6px; font-size: 14px; font-weight: 600;
   }
   .dl .note { font-size: 12px; color: var(--dark); }
+  #rightcol { position: sticky; top: 76px; }
+  #rightcol .card { margin-bottom: 0; }
   ul.jobs { list-style: none; }
   ul.jobs li {
     padding: 10px 6px; border-bottom: 1px solid var(--line); font-size: 13px;
     display: flex; align-items: center; gap: 8px; cursor: pointer;
   }
+  ul.jobs li:last-child { border-bottom: none; }
   ul.jobs li:hover { background: var(--card-bg); }
   .st {
     font-size: 11px; padding: 1px 8px; border-radius: 10px;
@@ -102,62 +109,61 @@
 </head>
 <body>
 <header><div class="inner">
-  <span class="dot"></span>
   <h1>Brand PPT Generator</h1>
-  <span class="sub">Markdown 周报 → 品牌 PPT · 检查-修复环 · verbatim 数字纪律</span>
 </div></header>
 
 <main>
-  <div class="card">
-    <h2>上传周报文档，生成品牌 PPT</h2>
-    <div class="desc">
-      支持 <b>.md / .txt</b> 格式的结构化周报（格式见
-      <a href="https://github.com/liufifi-byte/brand-ppt-generator" target="_blank" style="color:var(--primary)">README</a>）。
-      生成后可下载完整 .pptx（封面 / 数据页 / 每条新闻一页 / 结尾页）。
-    </div>
-    <div id="drop">
-      <div style="font-size:26px">📄</div>
-      <div class="fname" id="fname">点击或拖拽周报 Markdown 到此区域</div>
-      <div class="hint">仅支持 .md / .markdown / .txt</div>
-    </div>
-    <input type="file" id="file" accept=".md,.markdown,.txt" style="display:none" />
-    <div class="modes">
-      <div class="mode sel" data-mode="template" id="m-tpl">
-        <b>⚡ 模板快速模式（推荐）</b>
-        <span>版式程序化渲染，模型仅一次 KPI 抽取，全 deck 约 5-6 分钟</span>
+  <div id="leftcol">
+    <div class="card">
+      <h2>上传周报文档，生成品牌 PPT</h2>
+      <div id="drop">
+        <div class="fname" id="fname">点击或拖拽周报 Markdown 到此区域</div>
+        <div class="hint">仅支持 .md / .markdown / .txt</div>
       </div>
-      <div class="mode" data-mode="generate" id="m-gen">
-        <b>🎨 SVG 生成模式</b>
-        <span>逐页模型绘制 + 五道检查修复环，每页约 1-5 分钟</span>
+      <input type="file" id="file" accept=".md,.markdown,.txt" style="display:none" />
+      <div class="modes" role="radiogroup" aria-label="生成模式">
+        <button type="button" class="mode sel" data-mode="template" id="m-tpl"
+                role="radio" aria-checked="true">
+          <b>模板快速模式（推荐）</b>
+          <span>版式程序化渲染，模型仅一次 KPI 抽取，全 deck 约 5-6 分钟</span>
+        </button>
+        <button type="button" class="mode" data-mode="generate" id="m-gen"
+                role="radio" aria-checked="false">
+          <b>SVG 生成模式</b>
+          <span>逐页模型绘制 + 五道检查修复环，每页约 1-5 分钟</span>
+        </button>
+      </div>
+      <button class="primary" id="go" disabled>生成 PPT</button>
+    </div>
+
+    <div class="card" id="progcard" style="display:none">
+      <div class="status-row" id="strow">
+        <span class="spin"></span>
+        <b id="sttext">排队中…</b>
+        <span id="stpages" style="margin-left:auto;color:var(--dark);font-size:12px"></span>
+      </div>
+      <div class="bar"><i id="barfill"></i></div>
+      <div id="log"></div>
+      <div class="dl" id="dlrow">
+        <a id="dllink" href="#">下载 PPTX</a>
+        <span class="note" id="dlnote"></span>
       </div>
     </div>
-    <button class="primary" id="go" disabled>生成 PPT</button>
   </div>
 
-  <div class="card" id="progcard" style="display:none">
-    <div class="status-row" id="strow">
-      <span class="spin"></span>
-      <b id="sttext">排队中…</b>
-      <span id="stpages" style="margin-left:auto;color:var(--dark);font-size:12px"></span>
+  <div id="rightcol">
+    <div class="card">
+      <h2>历史任务</h2>
+      <ul class="jobs" id="jobs"><li style="cursor:default;color:var(--dark)">暂无</li></ul>
     </div>
-    <div class="bar"><i id="barfill"></i></div>
-    <div id="log"></div>
-    <div class="dl" id="dlrow">
-      <a id="dllink" href="#">下载 PPTX</a>
-      <span class="note" id="dlnote"></span>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>历史任务</h2>
-    <ul class="jobs" id="jobs"><li style="cursor:default;color:var(--dark)">暂无</li></ul>
   </div>
 </main>
+
 <footer>
   <a href="https://github.com/liufifi-byte/brand-ppt-generator" target="_blank">GitHub</a>
   · 换品牌：替换 sample/assets 图片并修改 mdpptx/theme.py
 </footer>
 
-<script src="/app.js"></script>
+<script src="/app.js?v=2"></script>
 </body>
 </html>

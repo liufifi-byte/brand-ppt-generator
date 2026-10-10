@@ -7,9 +7,14 @@
   let currentJob = null;
   let logSeen = 0;
 
-  // ── 文件选择 (点击 + 拖拽) ──
+  // ── 文件选择 (点击 + 拖拽 + 键盘) ──
   const drop = $("drop"), fileInput = $("file");
+  drop.setAttribute("role", "button");
+  drop.setAttribute("tabindex", "0");
   drop.addEventListener("click", () => fileInput.click());
+  drop.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+  });
   fileInput.addEventListener("change", () => setFile(fileInput.files[0]));
   drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
   drop.addEventListener("dragleave", () => drop.classList.remove("over"));
@@ -25,13 +30,20 @@
     $("go").disabled = false;
   }
 
-  // ── 模式选择 ──
-  document.querySelectorAll(".mode").forEach((el) => {
-    el.addEventListener("click", () => {
-      document.querySelectorAll(".mode").forEach((m) => m.classList.remove("sel"));
-      el.classList.add("sel");
-      mode = el.dataset.mode;
+  // ── 模式选择 (radio 语义: 点击/方向键切换) ──
+  const modeCards = Array.from(document.querySelectorAll(".mode"));
+  function selectMode(el) {
+    modeCards.forEach((m) => {
+      m.classList.toggle("sel", m === el);
+      m.setAttribute("aria-checked", m === el ? "true" : "false");
     });
+    mode = el.dataset.mode;
+  }
+  modeCards.forEach((el) => el.addEventListener("click", () => selectMode(el)));
+  document.querySelector(".modes").addEventListener("keydown", (e) => {
+    const i = modeCards.findIndex((m) => m.classList.contains("sel"));
+    if (e.key === "ArrowRight" && i < modeCards.length - 1) selectMode(modeCards[i + 1]);
+    if (e.key === "ArrowLeft" && i > 0) selectMode(modeCards[i - 1]);
   });
 
   // ── 提交任务 ──
@@ -137,6 +149,8 @@
         nm.className = "jname"; nm.textContent = j.file_name + "（" + j.mode + "）";
         const tm = document.createElement("span");
         tm.className = "jtime"; tm.textContent = j.created.replace("T", " ");
+        li.setAttribute("role", "button");
+        li.setAttribute("tabindex", "0");
         li.append(st, nm, tm);
         li.addEventListener("click", () => {
           currentJob = j.id; logSeen = 0;
