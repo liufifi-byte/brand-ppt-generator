@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# 密钥 (切勿提交)
+.env
+
+# 运行产物
+work/
+
+# 编辑器/系统
+.DS_Store
+*.log
