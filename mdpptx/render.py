@@ -46,12 +46,18 @@ def post_fix(svg: str) -> str:
 
 
 def gen_page(llm, pg: dict, idx: int, total: int, doc: dict,
-             work: Path, max_rounds: int = 3) -> tuple[str, list[str]]:
+             work: Path, max_rounds: int = 3, on_event=None) -> tuple[str, list[str]]:
     """生成一页: 检查未过则带问题清单重写, 最多 max_rounds 轮。
 
+    on_event(msg): 单字符串心跳 (Web 任务日志用); 每轮调用前后各发一条,
+    单次调用最长 CALL_TIMEOUT 秒, 期间静默属正常。
     Returns:
         (svg, 问题清单) — 问题清单为空 = 通过; 用尽轮次返回最后一稿+问题。
     """
+    def ev(msg: str):
+        if on_event is not None:
+            on_event(msg)
+
     usr, srcs, extra = page_user(pg, idx, total, doc)
     history = ""
     last_svg = ""
@@ -62,6 +68,7 @@ def gen_page(llm, pg: dict, idx: int, total: int, doc: dict,
             usr + f"\n\n# 上一稿问题 (第{rnd-1}轮, 必须全部修复; "
                   f"逐条对照检查后重输完整 SVG):\n{history}\n\n上一稿 SVG:\n" + last_svg)
         tc0 = time.time()
+        ev(f"P{idx:02d} 第{rnd}轮 生成中（单轮最长约 {CALL_TIMEOUT//60} 分钟, 请稍候）…")
         try:
             raw = llm._chat(build_sys(), prompt,
                             disable_thinking=True, temperature=0.2,
@@ -69,6 +76,7 @@ def gen_page(llm, pg: dict, idx: int, total: int, doc: dict,
         except Exception as e:
             msg = f"LLM 调用失败 (超时预算{CALL_TIMEOUT}s): {str(e)[:160]}"
             print(f"  [P{idx:02d}] ✗ {msg}", flush=True)
+            ev(f"P{idx:02d} ✗ {msg[:120]}")
             return last_svg, [msg]
         print(f"    [call] {time.time()-tc0:.0f}s out={len(raw)}ch", flush=True)
         svg = post_fix(raw)
@@ -77,6 +85,8 @@ def gen_page(llm, pg: dict, idx: int, total: int, doc: dict,
                                        png_dir=work / "png", page_tag=f"p{idx:02d}")
         print(f"  [P{idx:02d}] 第{rnd}轮 {'✓' if ok else '✗ ' + '; '.join(issues)[:150]}"
               f" ({time.time()-t0:.0f}s)", flush=True)
+        ev(f"P{idx:02d} 第{rnd}轮 {'✓ 通过' if ok else '✗ 未过, 带问题重写'}"
+           f" ({time.time()-t0:.0f}s)")
         if ok:
             return svg, []
         history = "\n".join(f"- {i}" for i in issues)

@@ -7,6 +7,7 @@
 from __future__ import annotations
 import json
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -248,6 +249,8 @@ def run_template(work: Path, out: Path | None, model: str | None,
     year = news_pages[0]["date"][:4] if news_pages else "2026"
     period = (f"{year}年{int(m.group(1))}月{int(m.group(2))}日至"
               f"{int(m.group(3))}月{int(m.group(4))}日") if m else ""
+    # 无母版页型 (数据页等) → 后台线程模型生成; 不阻塞其余页的渲染与检查
+    model_pages: list[tuple[int, dict]] = []
     for i, pg in enumerate(pages, 1):
         dst = svg_dir / f"page_{i:02d}.svg"
         if pg["type"] == "cover":
@@ -261,16 +264,30 @@ def run_template(work: Path, out: Path | None, model: str | None,
                            encoding="utf-8")
         elif pg["type"] == "end":
             dst.write_text(render_end(i, total), encoding="utf-8")
-        elif not dst.exists():   # 数据页等无母版页型 → 模型单页补 (仅首次)
-            if llm is None:
-                llm = llm_factory(model)
-            _ev("gen", f"P{i:02d}({pg['type']}) 无母版, 模型单页生成中 (约 3-5 分钟)…")
-            print(f"[reuse-miss] P{i:02d}({pg['type']}) 无母版, 走模型生成…", flush=True)
-            svg, iss = gen_page(llm, pg, i, total, doc, work)
-            if svg:
-                dst.write_text(svg, encoding="utf-8")
-            else:
-                print(f"  [P{i:02d}] ✗ 模型生成失败: {'; '.join(iss)[:200]}")
+        elif not dst.exists():
+            model_pages.append((i, pg))
+
+    gen_thread = None
+    gen_results: dict[int, tuple[str, list[str]]] = {}
+    if model_pages:
+        if llm is None:
+            llm = llm_factory(model)
+
+        def _gen_model_pages():
+            for i, pg in model_pages:
+                _ev("gen", f"P{i:02d}({pg['type']}) 无母版, 模型后台生成中 "
+                           f"(约 5-15 分钟, 不阻塞其他页检查)…")
+                print(f"[reuse-miss] P{i:02d}({pg['type']}) 无母版, 走模型生成…", flush=True)
+                gen_results[i] = gen_page(llm, pg, i, total, doc, work,
+                                          on_event=lambda m: _ev("gen", m))
+                svg, iss = gen_results[i]
+                if svg:
+                    (svg_dir / f"page_{i:02d}.svg").write_text(svg, encoding="utf-8")
+                else:
+                    print(f"  [P{i:02d}] ✗ 模型生成失败: {'; '.join(iss)[:200]}")
+
+        gen_thread = threading.Thread(target=_gen_model_pages, daemon=True)
+        gen_thread.start()
     # 页码修正: 复用旧母版页若为旧总页数口径
     for f in svg_dir.glob("page_*.svg"):
         t = f.read_text(encoding="utf-8")
@@ -278,12 +295,26 @@ def run_template(work: Path, out: Path | None, model: str | None,
         if t2 != t:
             f.write_text(t2, encoding="utf-8")
     # 全页检查 + 渲染 (srcs/extra 与 prompts.page_user 同源, 口径一致)
+    # 模型页在后台生成期间, 先检查其余页 → 进度条先走起来
+    model_idx = {i for i, _ in model_pages}
+    check_order = [i for i in range(1, total + 1) if i not in model_idx]
+    if gen_thread is not None:
+        check_order += sorted(model_idx)   # 模型页最后查 (此时后台线程已完成)
     ok_list = []
-    for i, pg in enumerate(pages, 1):
+    done_count = 0
+    for i in check_order:
+        pg = pages[i - 1]
+        # 模型页: 先等后台线程收尾, 再判文件存在性 (顺序反了会把
+        # 生成中的页误判"缺页" — 2026-10-11 事故, 本次修复)
+        if i in model_idx and gen_thread is not None:
+            _ev("gen", "其余页检查完毕, 等待模型页收尾…")
+            gen_thread.join()
+            gen_thread = None
         f = svg_dir / f"page_{i:02d}.svg"
+        done_count += 1
         if not f.exists():
             print(f"  [P{i:02d}] 缺页!")
-            _ev("page", f"P{i:02d} 缺页 ✗", pages_done=i)
+            _ev("page", f"P{i:02d} 缺页 ✗", pages_done=done_count)
             ok_list.append(False)
             continue
         svg = f.read_text(encoding="utf-8")
@@ -300,7 +331,7 @@ def run_template(work: Path, out: Path | None, model: str | None,
         ok_list.append(ok)
         line = f"[P{i:02d}] {'✓' if ok else '✗ ' + '; '.join(issues)[:120]}"
         print("  " + line)
-        _ev("page", line, pages_done=i)
+        _ev("page", line, pages_done=done_count)
     print(f"检查通过 {sum(ok_list)}/{total}")
     _ev("check", f"检查通过 {sum(ok_list)}/{total}")
 
